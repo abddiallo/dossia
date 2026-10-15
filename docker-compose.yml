@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: dossia
+      POSTGRES_PASSWORD: dossia
+      POSTGRES_DB: dossia
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dossia"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://dossia:dossia@db:5432/dossia
+      REDIS_URL: redis://redis:6379/0
+      DATA_DIR: /data
+      API_URL: http://localhost:8080
+      FRONTEND_URL: http://localhost:8080
+      CORS_ORIGINS: http://localhost:8080
+    volumes: [data:/data]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  worker:
+    build: ./backend
+    command: python -m app.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://dossia:dossia@db:5432/dossia
+      REDIS_URL: redis://redis:6379/0
+      DATA_DIR: /data
+      API_URL: http://localhost:8080
+      FRONTEND_URL: http://localhost:8080
+    volumes: [data:/data]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+    deploy:
+      replicas: 2        # deux conversions LibreOffice en parallèle
+
+  frontend:
+    build: ./frontend
+    ports: ["8080:80"]
+    depends_on: [backend]
+
+volumes:
+  pgdata:
+  data:
